@@ -39,67 +39,94 @@
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
 
-// global variables
-std::string in_filename;               // mesh file for import
-std::string out_filename;              // output file name
-bool debug;                            // show debug messages?
-Real nu;                               // Poisson's ratio
-Real em;                               // Young's modulus
-Real thickness;                        // Mesh thickness
-std::vector<DenseVector<Real>> forces; // nodal force vector
-bool isOutfileSet;                     // should outputs be written or not
+struct shellparam
+{
+  shellparam(){};
+  ~shellparam(){};
+  bool read_parameters(int, char **);
+  std::string in_filename;  // mesh file for import
+  std::string out_filename; // output file name
+  bool debug;
+  Real nu;        // Poisson's ratio
+  Real em;        // Young's modulus
+  Real thickness; // Mesh thickness
+  bool isOutfileSet;
+};
 
-DenseMatrix<Real> Dp, Dm; // material matrix for plante (Dp) and plane (Dm)
+class shellsolid
+{
+public:
+  shellsolid(Mesh &, const shellparam &);
+  ~shellsolid();
+  // function prototypes:
+  void read_forcing();
 
-// function prototypes:
-bool read_parameters(int argc, char **argv);
+  void writeOutput(Mesh &mesh, EquationSystems &es);
 
-void initMaterialMatrices();
+  void run();
 
-void initElement(const Elem **elem,
-                 DenseMatrix<Real> &transUV,
-                 DenseMatrix<Real> &trafo,
-                 DenseMatrix<Real> &dphi,
-                 Real *area);
+private:
+  void initMaterialMatrices();
 
-void calcPlane(ElemType type,
-               DenseMatrix<Real> &transUV,
-               DenseMatrix<Real> &dphi,
-               Real *area,
-               DenseMatrix<Real> &Ke_m);
+  static void initElement(const Elem **elem,
+                          DenseMatrix<Real> &transUV,
+                          DenseMatrix<Real> &trafo,
+                          DenseMatrix<Real> &dphi,
+                          Real *area);
 
-void calcPlate(ElemType type,
-               DenseMatrix<Real> &dphi,
-               Real *area,
-               DenseMatrix<Real> &Ke_p);
+  static void calcPlane(EquationSystems &es,
+                        ElemType type,
+                        DenseMatrix<Real> &transUV,
+                        DenseMatrix<Real> &dphi,
+                        Real *area,
+                        DenseMatrix<Real> &Ke_m);
 
-void evalBTri(DenseVector<Real> &C,
-              Real L1,
-              Real L2,
-              DenseMatrix<Real> &dphi_p,
-              DenseMatrix<Real> &out);
+  static void calcPlate(EquationSystems &es,
+                        ElemType type,
+                        DenseMatrix<Real> &dphi,
+                        Real *area,
+                        DenseMatrix<Real> &Ke_p);
 
-void evalBQuad(DenseMatrix<Real> &Hcoeffs,
-               Real xi,
-               Real eta,
-               DenseMatrix<Real> &Jinv,
-               DenseMatrix<Real> &out);
+  static void evalBQuad(EquationSystems &es,
+                        DenseMatrix<Real> &Hcoeffs,
+                        Real xi,
+                        Real eta,
+                        DenseMatrix<Real> &Jinv,
+                        DenseMatrix<Real> &out);
 
-void constructStiffnessMatrix(ElemType type,
-                              DenseMatrix<Real> &Ke_m,
-                              DenseMatrix<Real> &Ke_p,
-                              DenseMatrix<Real> &K_out);
+  static void constructStiffnessMatrix(EquationSystems &es,
+                                       ElemType type,
+                                       DenseMatrix<Real> &Ke_m,
+                                       DenseMatrix<Real> &Ke_p,
+                                       DenseMatrix<Real> &K_out);
 
-void localToGlobalTrafo(ElemType type,
-                        DenseMatrix<Real> &trafo,
-                        DenseMatrix<Real> &Ke_inout);
+  static void localToGlobalTrafo(EquationSystems &es,
+                                 ElemType type,
+                                 DenseMatrix<Real> &trafo,
+                                 DenseMatrix<Real> &Ke_inout);
 
-void contribRHS(const Elem **elem,
-                DenseVector<Real> &Fe,
-                std::unordered_set<unsigned int> *processedNodes);
+  static void contribRHS(EquationSystems &es,
+                         const Elem **elem,
+                         DenseVector<Real> &Fe,
+                         std::unordered_set<unsigned int> *processedNodes);
 
-void assemble_elasticity(EquationSystems &es, const std::string &system_name);
+  static void assemble_elasticity(EquationSystems &es,
+                                  const std::string &system_name);
 
-void writeOutput(Mesh &mesh, EquationSystems &es);
+  Mesh mesh;
+  EquationSystems equation_systems;
+  LinearImplicitSystem &system;
+
+  std::string in_filename;               // mesh file for import
+  std::string out_filename;              // output file name
+  bool debug;                            // show debug messages?
+  Real nu;                               // Poisson's ratio
+  Real em;                               // Young's modulus
+  Real thickness;                        // Mesh thickness
+  std::vector<DenseVector<Real>> forces; // nodal force vector
+  bool isOutfileSet;                     // should outputs be written or not
+
+  DenseMatrix<Real> Dp, Dm; // material matrix for plate (Dp) and plane (Dm)
+};
 
 #endif // FEMSHELL_H

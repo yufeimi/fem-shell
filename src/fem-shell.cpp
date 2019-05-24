@@ -13,8 +13,9 @@
 // Begin the main program.
 int main(int argc, char **argv)
 {
+  shellparam param;
   // read command-line arguments and initialize global variables
-  if (read_parameters(argc, argv))
+  if (param.read_parameters(argc, argv))
     {
       std::cout << "Read command-line arguments.......OK" << std::endl;
     }
@@ -35,163 +36,13 @@ int main(int argc, char **argv)
   Mesh mesh(init.comm(), 2);
   mesh.allow_renumbering(
     false); // prevent libMesh from renumber nodes on its own
-  mesh.read(
-    in_filename); // throws error if file does not exist and checks content
+  mesh.read(param.in_filename);
+  // throws error if file does not exist and checks content
   // Print information about the mesh to the screen
   mesh.print_info();
 
-  // Load force file containing single nodal forces and moments
-  // CONVENTION: force file has same file name as mesh file
-  //             without extension, but with "_f" added at the end
-  std::filebuf fb;
-  if (in_filename.find(".xda") != std::string::npos ||
-      in_filename.find(".xdr") != std::string::npos ||
-      in_filename.find(".msh") != std::string::npos)
-    in_filename.resize(in_filename.size() - 4);
-
-  in_filename += "_f";
-
-  if (fb.open(in_filename.c_str(), std::ios::in))
-    {
-      std::istream input(&fb);
-      int n_Forces;
-      input >>
-        n_Forces; // size of force vector (must equal number of mesh nodes)
-      double factor = 1.0;
-      input >>
-        factor; // global factor multiplied to every single force and moment
-      for (int i = 0; i < n_Forces; i++)
-        {
-          DenseVector<Real> p(6); // F_x, F_y, F_z, M_x, M_y, M_z
-          for (int j = 0; j < 6; j++)
-            input >> p(j);
-          p *= factor;
-          forces.push_back(p);
-        }
-    }
-
-  // Create an equation systems object.
-  EquationSystems equation_systems(mesh);
-
-  // Declare the system and its variables.
-  // Create a linear implicit system named "Elasticity"
-  LinearImplicitSystem &system =
-    equation_systems.add_system<LinearImplicitSystem>("Elasticity");
-
-  // Add three displacement variables, u, v and w,
-  // as well as three drilling variables theta_x, theta_y and theta_z to the
-  // system
-  unsigned int u_var = system.add_variable("u", FIRST, LAGRANGE);
-  unsigned int v_var = system.add_variable("v", FIRST, LAGRANGE);
-  unsigned int w_var = system.add_variable("w", FIRST, LAGRANGE);
-  unsigned int tx_var = system.add_variable("tx", FIRST, LAGRANGE);
-  unsigned int ty_var = system.add_variable("ty", FIRST, LAGRANGE);
-  unsigned int tz_var = system.add_variable("tz", FIRST, LAGRANGE);
-
-  system.attach_assemble_function(assemble_elasticity);
-
-  // Construct a Dirichlet boundary condition object
-  // We impose a "simply supported" boundary condition
-  // on the nodes with bc_id = 0 and 20
-  std::set<boundary_id_type> boundary_ids;
-  boundary_ids.insert(0);
-  // actually only required with coupled version, but with this,
-  // coupling-ready mesh files can also be processed with stand-alone version:
-  boundary_ids.insert(20);
-
-  // Create a vector storing the variable numbers which the BC applies to
-  std::vector<unsigned int> variables;
-  variables.push_back(u_var);
-  variables.push_back(v_var);
-  variables.push_back(w_var);
-
-  // Create a ZeroFunction to initialize dirichlet_bc
-  ConstFunction<Number> cf(0.0);
-  DirichletBoundary dirichlet_bc(boundary_ids, variables, &cf);
-
-  // We impose a "clamped" boundary condition
-  // on the nodes with bc_id = 1 and 21
-  boundary_ids.clear();
-  boundary_ids.insert(1);
-  // actually only required with coupled version, but with this,
-  // coupling-ready mesh files can also be processed with stand-alone version:
-  boundary_ids.insert(21);
-  variables.push_back(tx_var);
-  variables.push_back(ty_var);
-  variables.push_back(tz_var);
-  DirichletBoundary dirichlet_bc2(boundary_ids, variables, &cf);
-
-  // We must add the Dirichlet boundary condition _before_ we call
-  // equation_systems.init()
-  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
-  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc2);
-
-  initMaterialMatrices();
-
-  // Initialize the data structures for the equation system.
-  equation_systems.init();
-
-  // Print information about the system to the screen.
-  equation_systems.print_info();
-
-  // const Real tol            = equation_systems.parameters.get<Real>("linear
-  // solver tolerance"); const unsigned int max_it =
-  // equation_systems.parameters.get<unsigned int>("linear solver maximum
-  // iterations"); equation_systems.parameters.set<unsigned int>("linear solver
-  // maximum iterations") = max_it;
-  // equation_systems.parameters.set<Real>("linear solver tolerance") = tol;
-
-  /**
-   * Solve the system
-   **/
-  equation_systems.solve();
-  // store the solution in a vector
-  std::vector<Number> sols;
-  equation_systems.build_solution_vector(sols);
-
-  if (debug)
-    {
-      std::cout << "System matrix:" << std::endl;
-      system.matrix->print(std::cout);
-      std::cout << std::endl << "RHS:" << std::endl;
-      system.rhs->print(std::cout);
-      std::cout << std::endl;
-    }
-
-  // be sure that only the master process (id = 0) works on the solution,
-  // since the rest of the processes only see their own partial solution
-  if (global_processor_id() == 0)
-    {
-      std::cout << "Solution: u_vec = [";
-      MeshBase::const_node_iterator no = mesh.nodes_begin();
-      const MeshBase::const_node_iterator end_no = mesh.nodes_end();
-      for (; no != end_no; ++no)
-        {
-          Node *nd = *no;
-          int id = nd->id();
-          Real displ_x = sols[6 * id];
-          Real displ_y = sols[6 * id + 1];
-          Real displ_z = sols[6 * id + 2];
-          std::cout << "u= " << displ_x << ", v= " << displ_y
-                    << ", w= " << displ_z;
-          Real twist_x = sols[6 * id + 3];
-          Real twist_y = sols[6 * id + 4];
-          Real twist_z = sols[6 * id + 5];
-          std::cout << ", tx= " << twist_x << ", ty= " << twist_y
-                    << ", tz= " << twist_z << "]" << std::endl;
-          // apply displacements to mesh nodes
-          (*nd)(0) += displ_x;
-          (*nd)(1) += displ_y;
-          (*nd)(2) += displ_z;
-        }
-      std::cout << "]" << std::endl << std::endl;
-    }
-
-  if (isOutfileSet)
-    writeOutput(mesh, equation_systems);
-
-  std::cout << "All done :)\n";
-
+  shellsolid shell(mesh, param);
+  shell.run();
   return 0;
 }
 
@@ -203,7 +54,7 @@ int main(int argc, char **argv)
  * @param argv Array storing the contents of the arguments
  * @return returns true if all parameters could be processes, false otherwise
  */
-bool read_parameters(int argc, char **argv)
+bool shellparam::read_parameters(int argc, char **argv)
 {
   if (argc < 5)
     {
@@ -276,12 +127,183 @@ bool read_parameters(int argc, char **argv)
   return (!failed);
 }
 
+shellsolid::shellsolid(Mesh &mesh, const shellparam &param)
+  : mesh(mesh),
+    equation_systems(mesh),
+    system(equation_systems.add_system<LinearImplicitSystem>("Elasticity")),
+    in_filename(param.in_filename),
+    out_filename(param.out_filename),
+    debug(param.debug),
+    nu(param.nu),
+    em(param.em),
+    thickness(param.thickness),
+    isOutfileSet(param.isOutfileSet)
+{
+  equation_systems.parameters.insert<Real>("Thickness");
+  equation_systems.parameters.set<Real>("Thickness") = thickness;
+  equation_systems.parameters.insert<bool>("Debug");
+  equation_systems.parameters.set<bool>("Debug") = debug;
+}
+
+void shellsolid::read_forcing()
+{ // Load force file containing single nodal forces and moments
+  // CONVENTION: force file has same file name as mesh file
+  //             without extension, but with "_f" added at the end
+  std::filebuf fb;
+  if (in_filename.find(".xda") != std::string::npos ||
+      in_filename.find(".xdr") != std::string::npos ||
+      in_filename.find(".msh") != std::string::npos)
+    in_filename.resize(in_filename.size() - 4);
+
+  in_filename += "_f";
+
+  if (fb.open(in_filename.c_str(), std::ios::in))
+    {
+      std::istream input(&fb);
+      int n_Forces;
+      input >>
+        n_Forces; // size of force vector (must equal number of mesh nodes)
+      double factor = 1.0;
+      input >>
+        factor; // global factor multiplied to every single force and moment
+      for (int i = 0; i < n_Forces; i++)
+        {
+          DenseVector<Real> p(6); // F_x, F_y, F_z, M_x, M_y, M_z
+          for (int j = 0; j < 6; j++)
+            input >> p(j);
+          p *= factor;
+          forces.push_back(p);
+        }
+    }
+  equation_systems.parameters.insert<std::vector<DenseVector<Real>> *>(
+    "Forcing terms");
+  equation_systems.parameters.set<std::vector<DenseVector<Real>> *>(
+    "Forcing terms") = &forces;
+}
+
+void shellsolid::run()
+{
+  read_forcing();
+  // Add three displacement variables, u, v and w,
+  // as well as three drilling variables theta_x, theta_y and theta_z to the
+  // system
+  unsigned int u_var = system.add_variable("u", FIRST, LAGRANGE);
+  unsigned int v_var = system.add_variable("v", FIRST, LAGRANGE);
+  unsigned int w_var = system.add_variable("w", FIRST, LAGRANGE);
+  unsigned int tx_var = system.add_variable("tx", FIRST, LAGRANGE);
+  unsigned int ty_var = system.add_variable("ty", FIRST, LAGRANGE);
+  unsigned int tz_var = system.add_variable("tz", FIRST, LAGRANGE);
+
+  initMaterialMatrices();
+
+  system.attach_assemble_function(shellsolid::assemble_elasticity);
+  // Construct a Dirichlet boundary condition object
+  // We impose a "simply supported" boundary condition
+  // on the nodes with bc_id = 0 and 20
+  std::set<boundary_id_type> boundary_ids;
+  boundary_ids.insert(0);
+  // actually only required with coupled version, but with this,
+  // coupling-ready mesh files can also be processed with stand-alone version:
+  boundary_ids.insert(20);
+
+  // Create a vector storing the variable numbers which the BC applies to
+  std::vector<unsigned int> variables;
+  variables.push_back(u_var);
+  variables.push_back(v_var);
+  variables.push_back(w_var);
+
+  // Create a ZeroFunction to initialize dirichlet_bc
+  ConstFunction<Number> cf(0.0);
+  DirichletBoundary dirichlet_bc(boundary_ids, variables, &cf);
+
+  // We impose a "clamped" boundary condition
+  // on the nodes with bc_id = 1 and 21
+  boundary_ids.clear();
+  boundary_ids.insert(1);
+  // actually only required with coupled version, but with this,
+  // coupling-ready mesh files can also be processed with stand-alone version:
+  boundary_ids.insert(21);
+  variables.push_back(tx_var);
+  variables.push_back(ty_var);
+  variables.push_back(tz_var);
+  DirichletBoundary dirichlet_bc2(boundary_ids, variables, &cf);
+
+  // We must add the Dirichlet boundary condition _before_ we call
+  // equation_systems.init()
+  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
+  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc2);
+
+  // Initialize the data structures for the equation system.
+  equation_systems.init();
+
+  // Print information about the system to the screen.
+  equation_systems.print_info();
+
+  // const Real tol            = equation_systems.parameters.get<Real>("linear
+  // solver tolerance"); const unsigned int max_it =
+  // equation_systems.parameters.get<unsigned int>("linear solver maximum
+  // iterations"); equation_systems.parameters.set<unsigned int>("linear solver
+  // maximum iterations") = max_it;
+  // equation_systems.parameters.set<Real>("linear solver tolerance") = tol;
+
+  /**
+   * Solve the system
+   **/
+  equation_systems.solve();
+  // store the solution in a vector
+  std::vector<Number> sols;
+  equation_systems.build_solution_vector(sols);
+
+  if (debug)
+    {
+      std::cout << "System matrix:" << std::endl;
+      system.matrix->print(std::cout);
+      std::cout << std::endl << "RHS:" << std::endl;
+      system.rhs->print(std::cout);
+      std::cout << std::endl;
+    }
+
+  // be sure that only the master process (id = 0) works on the solution,
+  // since the rest of the processes only see their own partial solution
+  if (global_processor_id() == 0)
+    {
+      std::cout << "Solution: u_vec = [";
+      MeshBase::const_node_iterator no = mesh.nodes_begin();
+      const MeshBase::const_node_iterator end_no = mesh.nodes_end();
+      for (; no != end_no; ++no)
+        {
+          Node *nd = *no;
+          int id = nd->id();
+          Real displ_x = sols[6 * id];
+          Real displ_y = sols[6 * id + 1];
+          Real displ_z = sols[6 * id + 2];
+          std::cout << "u= " << displ_x << ", v= " << displ_y
+                    << ", w= " << displ_z;
+          Real twist_x = sols[6 * id + 3];
+          Real twist_y = sols[6 * id + 4];
+          Real twist_z = sols[6 * id + 5];
+          std::cout << ", tx= " << twist_x << ", ty= " << twist_y
+                    << ", tz= " << twist_z << "]" << std::endl;
+          // apply displacements to mesh nodes
+          (*nd)(0) += displ_x;
+          (*nd)(1) += displ_y;
+          (*nd)(2) += displ_z;
+        }
+      std::cout << "]" << std::endl << std::endl;
+    }
+
+  if (isOutfileSet)
+    writeOutput(mesh, equation_systems);
+
+  std::cout << "All done :)\n";
+}
+
 /**
  * Initializes the material matrix for the plane element(s) (Dm) and plate
  * element(s) (Dp). Dp and Dm are global variables; nu,em,thickness are filled
  * with command-line argument values.
  */
-void initMaterialMatrices()
+void shellsolid::initMaterialMatrices()
 {
   /*     /                   \
    *     | 1    nu      0    |
@@ -296,7 +318,7 @@ void initMaterialMatrices()
   Dp(1, 1) = 1.0;
   Dp(2, 2) = (1.0 - nu) / 2.0;
   Dm = Dp; // base matrix is same for Dm and Dp
-           //         E
+  //         E
   // Dm = ------- * D
   //       1-nu²
   Dm *= em / (1.0 - nu * nu); // material matrix for plane part
@@ -305,6 +327,15 @@ void initMaterialMatrices()
   //       12 * (1-nu²)
   Dp *= em * pow(thickness, 3.0) /
         (12.0 * (1.0 - nu * nu)); // material matrix for plate part
+  // Insert the matrices into the equation system.
+  equation_systems.parameters.insert<DenseMatrix<Real> *>(
+    "Plane material matrix");
+  equation_systems.parameters.insert<DenseMatrix<Real> *>(
+    "Plate material matrix");
+  equation_systems.parameters.set<DenseMatrix<Real> *>(
+    "Plane material matrix") = &Dm;
+  equation_systems.parameters.set<DenseMatrix<Real> *>(
+    "Plate material matrix") = &Dp;
 }
 
 /**
@@ -322,11 +353,11 @@ void initMaterialMatrices()
  * element in local space
  * @param area pointer, out-param, stores the area of the element
  */
-void initElement(const Elem **elem,
-                 DenseMatrix<Real> &transUV,
-                 DenseMatrix<Real> &trafo,
-                 DenseMatrix<Real> &dphi,
-                 Real *area)
+void shellsolid::initElement(const Elem **elem,
+                             DenseMatrix<Real> &transUV,
+                             DenseMatrix<Real> &trafo,
+                             DenseMatrix<Real> &dphi,
+                             Real *area)
 {
   // needed to differently treat different element types:
   ElemType type = (*elem)->type();
@@ -471,12 +502,19 @@ void initElement(const Elem **elem,
  * @param Ke_m reference, out-param, stiffness matrix for plane element
  * component
  */
-void calcPlane(ElemType type,
-               DenseMatrix<Real> &transUV,
-               DenseMatrix<Real> &dphi,
-               Real *area,
-               DenseMatrix<Real> &Ke_m)
-{
+void shellsolid::calcPlane(EquationSystems &es,
+                           ElemType type,
+                           DenseMatrix<Real> &transUV,
+                           DenseMatrix<Real> &dphi,
+                           Real *area,
+                           DenseMatrix<Real> &Ke_m)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
   if (type == TRI3)
     {
       // construct strain-displacement matrix B
@@ -596,68 +634,23 @@ void calcPlane(ElemType type,
  * @param Ke_p reference, out-param, stiffness matrix for plate element
  * component
  */
-void calcPlate(ElemType type,
-               DenseMatrix<Real> &dphi,
-               Real *area,
-               DenseMatrix<Real> &Ke_p)
-{
+void shellsolid::calcPlate(EquationSystems &es,
+                           ElemType type,
+                           DenseMatrix<Real> &dphi,
+                           Real *area,
+                           DenseMatrix<Real> &Ke_p)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
   DenseVector<Real> sidelen; // stores squared side lengths of the element
 
   if (type == TRI3)
     {
-      std::vector<std::vector<double>> qps(3); // quadrature points
-      for (unsigned int i = 0; i < qps.size(); i++)
-        qps[i].resize(2);
-      qps[0][0] = 1.0 / 6.0;
-      qps[0][1] = 1.0 / 6.0;
-      qps[1][0] = 2.0 / 3.0;
-      qps[1][1] = 1.0 / 6.0;
-      qps[2][0] = 1.0 / 6.0;
-      qps[2][1] = 2.0 / 3.0;
-
-      // squared side lengths
-      sidelen.resize(3);
-      sidelen(0) =
-        pow(dphi(0, 0), 2.0) + pow(dphi(0, 1), 2.0); // side AB, x12^2 + y12^2
-      sidelen(1) =
-        pow(dphi(1, 0), 2.0) + pow(dphi(1, 1), 2.0); // side AC, x31^2 + y31^2
-      sidelen(2) =
-        pow(dphi(2, 0), 2.0) + pow(dphi(2, 1), 2.0); // side BC, x23^2 + y23^2
-
-      Ke_p.resize(9, 9);
-      for (unsigned int i = 0; i < qps.size(); i++)
-        {
-          DenseMatrix<Real>
-            B; // strain-displacement-matrix
-               // construct B and evaluate it at the quadrature point
-          evalBTri(sidelen, qps[i][0], qps[i][1], dphi, B);
-
-          // construct auxiliary matrix Y:
-          DenseMatrix<Real> Y(3, 3);
-          Y(0, 0) = pow(dphi(2, 1), 2.0);
-          Y(0, 1) = pow(dphi(1, 1), 2.0);
-          Y(0, 2) = dphi(2, 1) * dphi(1, 1);
-          Y(1, 0) = pow(dphi(2, 0), 2.0);
-          Y(1, 1) = pow(dphi(1, 0), 2.0);
-          Y(1, 2) = dphi(1, 0) * dphi(2, 0);
-          Y(2, 0) = -2.0 * dphi(2, 0) * dphi(2, 1);
-          Y(2, 1) = -2.0 * dphi(1, 0) * dphi(1, 0);
-          Y(2, 2) = -dphi(2, 0) * dphi(1, 1) - dphi(1, 0) * dphi(2, 1);
-          Y *= 1.0 / (4.0 * pow(*area, 2.0));
-
-          DenseMatrix<Real> temp;
-          temp = Dp;                       // temp = 3x3
-          temp.right_multiply(Y);          // temp = 3x3
-          temp.right_multiply(B);          // temp = 9x3
-          temp.left_multiply_transpose(Y); // temp = 9x3
-          temp.left_multiply_transpose(B); // temp = 9x9
-
-          temp *= 1.0 / 6.0; // gauss-weight
-
-          Ke_p += temp;
-        }
-
-      Ke_p *= 2.0 * (*area);
+      // No support for tri.
     }
   else if (type == QUAD4)
     {
@@ -734,7 +727,7 @@ void calcPlate(ElemType type,
               DenseMatrix<Real> B;
               // construct strain-displacement-matrix B and evaluate it at the
               // current quadrature point:
-              evalBQuad(Hcoeffs, r, s, Jinv, B);
+              evalBQuad(es, Hcoeffs, r, s, Jinv, B);
 
               /*if (debug)
                               {
@@ -755,200 +748,6 @@ void calcPlate(ElemType type,
 }
 
 /**
- * Constructs the strain-displacement-matrix B for the Tri-3 plate element at
- * the specified quadrature point.
- * @param C reference, in-param, vector containing the squared side lengths
- * @param L1 in-param, first triangle coordinate component
- * @param L2 in-param, second triangle coordinate component
- * @param dphi reference, in-param, partial derivatives of the element
- * @param out reference, out-param, the strain-displacement-matrix to be
- * constructed
- */
-void evalBTri(DenseVector<Real> &C,
-              Real L1,
-              Real L2,
-              DenseMatrix<Real> &dphi,
-              DenseMatrix<Real> &out)
-{
-  out.resize(3, 9); // the future B
-
-  Real mu1 = (C(0) - C(1)) / C(2);
-  Real mu2 = (C(2) - C(0)) / C(1);
-  Real mu3 = (C(1) - C(2)) / C(0);
-
-  // some abbreviations to shorten the following terms
-  Real L3 = 1 - L1 - L2;
-  Real f13mu1 = 1 + 3 * mu1;
-  Real f13mu2 = 1 + 3 * mu2;
-  Real f13mu3 = 1 + 3 * mu3;
-  Real f1m3mu3 = 1 - 3 * mu3;
-  Real fm13mu2 = -1 + 3 * mu2;
-  Real fm1m3mu3 = -1 - 3 * mu3;
-  Real f1mmu1 = 1 - mu1;
-  Real f1mmu2 = 1 - mu2;
-  Real f1mmu3 = 1 - mu3;
-
-  Real a = 3 * f1mmu3 * L1 - f13mu3 * L2 + f13mu3 * L3;
-  Real b = 3 * f1mmu2 * L3 - f13mu2 * L1 + f13mu2 * L2;
-  Real c = 3 * f1mmu1 * L2 - f13mu1 * L3 + f13mu1 * L1;
-
-  // see page 38f of the thesis:
-  // the following terms contains second order derivatives of the 9 shape
-  // functions wrt the triangle coordinates L1 and L2
-  out(0, 0) = 6 + L2 * (-4 - 2 * a) + 4 * f1m3mu3 * (L2 * L3 - L1 * L2) -
-              12 * L1 + 2 * L2 * b + 8 * (L2 * L3 - L1 * L2);
-
-  out(0, 1) =
-    -dphi(1, 1) * (-2 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2) -
-    dphi(0, 1) *
-      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3);
-
-  out(0, 2) =
-    dphi(1, 0) * (-2 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2) +
-    dphi(0, 0) *
-      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3);
-
-  out(0, 3) = -2 * L2 * c + 4 * f13mu1 * (L2 * L3 - L1 * L2) - 4 * L2 +
-              2 * L2 * a + 4 * f1m3mu3 * (-L2 * L3 + L1 * L2);
-
-  out(0, 4) =
-    -dphi(0, 1) *
-      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3) -
-    dphi(2, 1) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1);
-
-  out(0, 5) =
-    dphi(0, 0) *
-      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3) +
-    dphi(2, 0) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1);
-
-  out(0, 6) = -6 + 12 * L1 + 8 * L2 - 2 * L2 * b + 8 * (L1 * L2 - L2 * L3) +
-              2 * L2 * c + 4 * f13mu1 * (L1 * L2 - L2 * L3);
-
-  out(0, 7) =
-    -dphi(2, 1) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1) -
-    dphi(1, 1) * (-4 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2);
-
-  out(0, 8) =
-    dphi(2, 0) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1) +
-    dphi(1, 0) * (-4 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2);
-
-  out(1, 0) = -2 * L1 * a + 2 * L1 * L3 * 2 * fm1m3mu3 -
-              2 * L1 * L2 * 2 * fm1m3mu3 - 4 * L1 + 2 * L1 * b -
-              2 * L1 * L3 * 2 * fm13mu2 + 2 * L1 * L2 * 2 * fm13mu2;
-
-  out(1, 1) = -dphi(1, 1) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
-                             1 * L1 * L2 * 2 * fm13mu2) -
-              dphi(0, 1) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
-                            1 * L1 * L2 * 2 * fm1m3mu3);
-
-  out(1, 2) = dphi(1, 0) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
-                            1 * L1 * L2 * 2 * fm13mu2) +
-              dphi(0, 0) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
-                            1 * L1 * L2 * 2 * fm1m3mu3);
-
-  out(1, 3) = 6 - 12 * L2 - 4 * L1 - 2 * L1 * c + 8 * L3 * L1 - 8 * L1 * L2 +
-              2 * L1 * a - 2 * L1 * L3 * 2 * fm1m3mu3 +
-              2 * L1 * L2 * 2 * fm1m3mu3;
-
-  out(1, 4) = -dphi(0, 1) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
-                             1 * L1 * L2 * 2 * fm1m3mu3) -
-              dphi(2, 1) *
-                (-6 * L2 + 2 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 - 4 * L1 * L2);
-
-  out(1, 5) = dphi(0, 0) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
-                            1 * L1 * L2 * 2 * fm1m3mu3) +
-              dphi(2, 0) *
-                (-6 * L2 + 2 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 - 4 * L1 * L2);
-
-  out(1, 6) = -6 + 8 * L1 - 2 * L1 * b + 2 * L1 * L3 * 2 * fm13mu2 -
-              2 * L1 * L2 * 2 * fm13mu2 + 12 * L2 + 2 * L1 * c - 8 * L3 * L1 +
-              8 * L1 * L2;
-
-  out(1, 7) = -dphi(2, 1) * (-6 * L2 + 4 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 -
-                             4 * L1 * L2) -
-              dphi(1, 1) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
-                            1 * L1 * L2 * 2 * fm13mu2);
-
-  out(1, 8) = dphi(2, 0) * (-6 * L2 + 4 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 -
-                            4 * L1 * L2) +
-              dphi(1, 0) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
-                            1 * L1 * L2 * 2 * fm13mu2);
-
-  out(2, 0) = 2 - 4 * L1 + L3 * a - L2 * a + L2 * L3 * 2 * fm1m3mu3 - L1 * a -
-              L1 * L2 * 2 * fm1m3mu3 + L1 * L3 * 2 * f1m3mu3 -
-              L1 * L2 * 2 * f1m3mu3 - 4 * L2 - L3 * b + L2 * b -
-              L2 * L3 * 2 * fm13mu2 + L1 * b + L1 * L2 * 2 * fm13mu2 +
-              4 * L3 * L1 - 4 * L1 * L2;
-
-  out(2, 1) =
-    -dphi(1, 1) * (-1 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
-                   0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
-                   0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2) -
-    dphi(0, 1) *
-      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
-       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
-       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3);
-
-  out(2, 2) =
-    dphi(1, 0) * (-1 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
-                  0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
-                  0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2) +
-    dphi(0, 0) *
-      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
-       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
-       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3);
-
-  out(2, 3) = 2 - 4 * L2 + L3 * c - L2 * c + 4 * L2 * L3 - L1 * c -
-              4 * L1 * L2 + L1 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1 -
-              4 * L1 - L3 * a + L2 * a + L1 * a - L2 * L3 * 2 * fm1m3mu3 +
-              L1 * L2 * 2 * fm1m3mu3 - L1 * L3 * 2 * f1m3mu3 +
-              L1 * L2 * 2 * f1m3mu3;
-
-  out(2, 4) =
-    -dphi(0, 1) *
-      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
-       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
-       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3 - 1) -
-    dphi(2, 1) *
-      (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 - 0.5 * L1 * c -
-       2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 - 0.5 * L1 * L2 * 2 * f13mu1);
-
-  out(2, 5) =
-    dphi(0, 0) *
-      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
-       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
-       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3 - 1) +
-    dphi(2, 0) *
-      (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 - 0.5 * L1 * c -
-       2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 - 0.5 * L1 * L2 * 2 * f13mu1);
-
-  out(2, 6) = -4 + 8 * L1 + 8 * L2 + L3 * b - L2 * b + L2 * L3 * 2 * fm13mu2 -
-              L1 * b - L1 * L2 * 2 * fm13mu2 - 4 * L3 * L1 + 8 * L1 * L2 -
-              L3 * c + L2 * c - 4 * L2 * L3 + L1 * c - L1 * L3 * 2 * f13mu1 +
-              L1 * L2 * 2 * f13mu1;
-
-  out(2, 7) =
-    -dphi(2, 1) * (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 -
-                   0.5 * L1 * c - 2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 -
-                   0.5 * L1 * L2 * 2 * f13mu1 + 1) -
-    dphi(1, 1) * (-2 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
-                  0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
-                  0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2);
-
-  out(2, 8) =
-    dphi(2, 0) * (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 -
-                  0.5 * L1 * c - 2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 -
-                  0.5 * L1 * L2 * 2 * f13mu1 + 1) +
-    dphi(1, 0) * (-2 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
-                  0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
-                  0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2);
-  // the last row of the matrix must be multipled by 2 (this way, the upper
-  // terms gets a bit shorter...)
-  for (int i = 0; i < 9; i++)
-    out(2, i) *= 2.0;
-}
-
-/**
  * Constructs the strain-displacement-matrix B for the Quad-4 plate element at
  * the specified quadrature point.
  * @param Hcoeffs reference, in-param, matrix containing coefficients
@@ -958,12 +757,19 @@ void evalBTri(DenseVector<Real> &C,
  * @param out reference, out-param, the strain-displacement-matrix to be
  * constructed
  */
-void evalBQuad(DenseMatrix<Real> &Hcoeffs,
-               Real xi,
-               Real eta,
-               DenseMatrix<Real> &Jinv,
-               DenseMatrix<Real> &out)
-{
+void shellsolid::evalBQuad(EquationSystems &es,
+                           DenseMatrix<Real> &Hcoeffs,
+                           Real xi,
+                           Real eta,
+                           DenseMatrix<Real> &Jinv,
+                           DenseMatrix<Real> &out)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
   out.resize(3, 12); // the future B
 
   // first order derivatives of the shape functions evaluated wrt to xi and eta
@@ -1064,12 +870,19 @@ void evalBQuad(DenseMatrix<Real> &Hcoeffs,
  * @param K_out reference, out-param, resulting stiffness matrix of shell
  * element
  */
-void constructStiffnessMatrix(ElemType type,
-                              DenseMatrix<Real> &Ke_m,
-                              DenseMatrix<Real> &Ke_p,
-                              DenseMatrix<Real> &K_out)
-{
-  int nodes = 3; // predefine Tri-3 element
+void shellsolid::constructStiffnessMatrix(EquationSystems &es,
+                                          ElemType type,
+                                          DenseMatrix<Real> &Ke_m,
+                                          DenseMatrix<Real> &Ke_p,
+                                          DenseMatrix<Real> &K_out)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
+  int nodes = 4; // predefine QUAD-4 element
   if (type == TRI3)
     nodes = 3;
   else if (type == QUAD4)
@@ -1138,11 +951,18 @@ void constructStiffnessMatrix(ElemType type,
  * @param Ke_inout reference, inout-param, modifies the shell stiffness matrix
  * with global space entries
  */
-void localToGlobalTrafo(ElemType type,
-                        DenseMatrix<Real> &trafo,
-                        DenseMatrix<Real> &Ke_inout)
-{
-  int nodes = 3; // predefine with Tri-3 element
+void shellsolid::localToGlobalTrafo(EquationSystems &es,
+                                    ElemType type,
+                                    DenseMatrix<Real> &trafo,
+                                    DenseMatrix<Real> &Ke_inout)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
+  int nodes = 4; // predefine with QUAD-4 element
   if (type == TRI3)
     nodes = 3;
   else if (type == QUAD4)
@@ -1204,10 +1024,22 @@ void localToGlobalTrafo(ElemType type,
  * @param processedNodes pointer, inout-param, contains the already processed
  * nodes of the mesh to prevent double contribution of a force to the RHS
  */
-void contribRHS(const Elem **elem,
-                DenseVector<Real> &Fe,
-                std::unordered_set<unsigned int> *processedNodes)
-{
+void shellsolid::contribRHS(EquationSystems &es,
+                            const Elem **elem,
+                            DenseVector<Real> &Fe,
+                            std::unordered_set<unsigned int> *processedNodes)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
+  // Unpack debug option
+  bool debug = es.parameters.get<bool>("Debug");
+
+  std::vector<DenseVector<Real>> &forces =
+    (*es.parameters.get<std::vector<DenseVector<Real>> *>("Forcing terms"));
   unsigned int nsides =
     (*elem)->n_sides();  // 'sides' in libMesh equals 'nodes' for an element
   Fe.resize(6 * nsides); // prepare the element's RHS
@@ -1255,8 +1087,20 @@ void contribRHS(const Elem **elem,
  * @param system_name reference, in-param The name of the system to assemble the
  * system matrix and RHS
  */
-void assemble_elasticity(EquationSystems &es, const std::string &system_name)
+void shellsolid::assemble_elasticity(EquationSystems &es,
+                                     const std::string &system_name)
 {
+  // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
+  // Unpack the forcing term
+  std::vector<DenseVector<Real>> &forces =
+    *(es.parameters.get<std::vector<DenseVector<Real>> *>("Forcing terms"));
+
   // only allow the call for the Elasticity system
   libmesh_assert_equal_to(system_name, "Elasticity");
 
@@ -1316,17 +1160,17 @@ void assemble_elasticity(EquationSystems &es, const std::string &system_name)
 
       // construct the stiffness matrices for the plane and plate element
       // component
-      calcPlane(type, transUV, dphi, &area, Ke_m);
-      calcPlate(type, dphi, &area, Ke_p);
+      calcPlane(es, type, transUV, dphi, &area, Ke_m);
+      calcPlate(es, type, dphi, &area, Ke_p);
 
       // superimpose both stiffness matrices to the shell element matrix
-      constructStiffnessMatrix(type, Ke_m, Ke_p, Ke);
+      constructStiffnessMatrix(es, type, Ke_m, Ke_p, Ke);
 
       // transform the shell stiffness matrix from local back to global space
-      localToGlobalTrafo(type, trafo, Ke);
+      localToGlobalTrafo(es, type, trafo, Ke);
 
       // construct the right-hand side for the element
-      contribRHS(&elem, Fe, &processedNodes);
+      contribRHS(es, &elem, Fe, &processedNodes);
 
       // constrain the matrix and RHS based on the defined boundary conditions
       dof_map.constrain_element_matrix_and_vector(Ke, Fe, dof_indices);
@@ -1343,7 +1187,7 @@ void assemble_elasticity(EquationSystems &es, const std::string &system_name)
  * @param es reference, in-param, from this system collection the solution is
  * written to the file
  */
-void writeOutput(Mesh &mesh, EquationSystems &es)
+void shellsolid::writeOutput(Mesh &mesh, EquationSystems &es)
 {
   // if not set in the command-line, we will not put anything out to files
   if (!isOutfileSet)
