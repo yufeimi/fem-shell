@@ -87,6 +87,13 @@ private:
                         Real *area,
                         DenseMatrix<Real> &Ke_p);
 
+  static void evalBTri(EquationSystems &es,
+                       DenseVector<Real> &C,
+                       Real L1,
+                       Real L2,
+                       DenseMatrix<Real> &dphi,
+                       DenseMatrix<Real> &out);
+
   static void evalBQuad(EquationSystems &es,
                         DenseMatrix<Real> &Hcoeffs,
                         Real xi,

@@ -650,7 +650,59 @@ void shellsolid::calcPlate(EquationSystems &es,
 
   if (type == TRI3)
     {
-      // No support for tri.
+      std::vector<std::vector<double>> qps(3); // quadrature points
+      for (unsigned int i = 0; i < qps.size(); i++)
+        qps[i].resize(2);
+      qps[0][0] = 1.0 / 6.0;
+      qps[0][1] = 1.0 / 6.0;
+      qps[1][0] = 2.0 / 3.0;
+      qps[1][1] = 1.0 / 6.0;
+      qps[2][0] = 1.0 / 6.0;
+      qps[2][1] = 2.0 / 3.0;
+
+      // squared side lengths
+      sidelen.resize(3);
+      sidelen(0) =
+        pow(dphi(0, 0), 2.0) + pow(dphi(0, 1), 2.0); // side AB, x12^2 + y12^2
+      sidelen(1) =
+        pow(dphi(1, 0), 2.0) + pow(dphi(1, 1), 2.0); // side AC, x31^2 + y31^2
+      sidelen(2) =
+        pow(dphi(2, 0), 2.0) + pow(dphi(2, 1), 2.0); // side BC, x23^2 + y23^2
+
+      Ke_p.resize(9, 9);
+      for (unsigned int i = 0; i < qps.size(); i++)
+        {
+          DenseMatrix<Real>
+            B; // strain-displacement-matrix
+               // construct B and evaluate it at the quadrature point
+          evalBTri(es, sidelen, qps[i][0], qps[i][1], dphi, B);
+
+          // construct auxiliary matrix Y:
+          DenseMatrix<Real> Y(3, 3);
+          Y(0, 0) = pow(dphi(2, 1), 2.0);
+          Y(0, 1) = pow(dphi(1, 1), 2.0);
+          Y(0, 2) = dphi(2, 1) * dphi(1, 1);
+          Y(1, 0) = pow(dphi(2, 0), 2.0);
+          Y(1, 1) = pow(dphi(1, 0), 2.0);
+          Y(1, 2) = dphi(1, 0) * dphi(2, 0);
+          Y(2, 0) = -2.0 * dphi(2, 0) * dphi(2, 1);
+          Y(2, 1) = -2.0 * dphi(1, 0) * dphi(1, 0);
+          Y(2, 2) = -dphi(2, 0) * dphi(1, 1) - dphi(1, 0) * dphi(2, 1);
+          Y *= 1.0 / (4.0 * pow(*area, 2.0));
+
+          DenseMatrix<Real> temp;
+          temp = Dp;                       // temp = 3x3
+          temp.right_multiply(Y);          // temp = 3x3
+          temp.right_multiply(B);          // temp = 9x3
+          temp.left_multiply_transpose(Y); // temp = 9x3
+          temp.left_multiply_transpose(B); // temp = 9x9
+
+          temp *= 1.0 / 6.0; // gauss-weight
+
+          Ke_p += temp;
+        }
+
+      Ke_p *= 2.0 * (*area);
     }
   else if (type == QUAD4)
     {
@@ -745,6 +797,207 @@ void shellsolid::calcPlate(EquationSystems &es,
             }
         } // end of quadrature point for-loops
     }     // end of element type switch
+}
+
+/**
+ * Constructs the strain-displacement-matrix B for the Tri-3 plate element at
+ * the specified quadrature point.
+ * @param C reference, in-param, vector containing the squared side lengths
+ * @param L1 in-param, first triangle coordinate component
+ * @param L2 in-param, second triangle coordinate component
+ * @param dphi reference, in-param, partial derivatives of the element
+ * @param out reference, out-param, the strain-displacement-matrix to be
+ * constructed
+ */
+void evalBTri(EquationSystems &es,
+              DenseVector<Real> &C,
+              Real L1,
+              Real L2,
+              DenseMatrix<Real> &dphi,
+              DenseMatrix<Real> &out)
+{ // Unpack the material matrices
+  DenseMatrix<Real> &Dm =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
+  DenseMatrix<Real> &Dp =
+    *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
+  // Unpack the thickness
+  Real thickness = es.parameters.get<Real>("Thickness");
+  out.resize(3, 9); // the future B
+
+  Real mu1 = (C(0) - C(1)) / C(2);
+  Real mu2 = (C(2) - C(0)) / C(1);
+  Real mu3 = (C(1) - C(2)) / C(0);
+
+  // some abbreviations to shorten the following terms
+  Real L3 = 1 - L1 - L2;
+  Real f13mu1 = 1 + 3 * mu1;
+  Real f13mu2 = 1 + 3 * mu2;
+  Real f13mu3 = 1 + 3 * mu3;
+  Real f1m3mu3 = 1 - 3 * mu3;
+  Real fm13mu2 = -1 + 3 * mu2;
+  Real fm1m3mu3 = -1 - 3 * mu3;
+  Real f1mmu1 = 1 - mu1;
+  Real f1mmu2 = 1 - mu2;
+  Real f1mmu3 = 1 - mu3;
+
+  Real a = 3 * f1mmu3 * L1 - f13mu3 * L2 + f13mu3 * L3;
+  Real b = 3 * f1mmu2 * L3 - f13mu2 * L1 + f13mu2 * L2;
+  Real c = 3 * f1mmu1 * L2 - f13mu1 * L3 + f13mu1 * L1;
+
+  // see page 38f of the thesis:
+  // the following terms contains second order derivatives of the 9 shape
+  // functions wrt the triangle coordinates L1 and L2
+  out(0, 0) = 6 + L2 * (-4 - 2 * a) + 4 * f1m3mu3 * (L2 * L3 - L1 * L2) -
+              12 * L1 + 2 * L2 * b + 8 * (L2 * L3 - L1 * L2);
+
+  out(0, 1) =
+    -dphi(1, 1) * (-2 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2) -
+    dphi(0, 1) *
+      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3);
+
+  out(0, 2) =
+    dphi(1, 0) * (-2 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2) +
+    dphi(0, 0) *
+      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3);
+
+  out(0, 3) = -2 * L2 * c + 4 * f13mu1 * (L2 * L3 - L1 * L2) - 4 * L2 +
+              2 * L2 * a + 4 * f1m3mu3 * (-L2 * L3 + L1 * L2);
+
+  out(0, 4) =
+    -dphi(0, 1) *
+      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3) -
+    dphi(2, 1) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1);
+
+  out(0, 5) =
+    dphi(0, 0) *
+      (2 * L2 - L2 * a + L2 * L3 * 2 * f1m3mu3 - L1 * L2 * 2 * f1m3mu3) +
+    dphi(2, 0) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1);
+
+  out(0, 6) = -6 + 12 * L1 + 8 * L2 - 2 * L2 * b + 8 * (L1 * L2 - L2 * L3) +
+              2 * L2 * c + 4 * f13mu1 * (L1 * L2 - L2 * L3);
+
+  out(0, 7) =
+    -dphi(2, 1) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1) -
+    dphi(1, 1) * (-4 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2);
+
+  out(0, 8) =
+    dphi(2, 0) * (-L2 * c + L2 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1) +
+    dphi(1, 0) * (-4 + 6 * L1 + 4 * L2 - L2 * b - 4 * L2 * L3 + 4 * L1 * L2);
+
+  out(1, 0) = -2 * L1 * a + 2 * L1 * L3 * 2 * fm1m3mu3 -
+              2 * L1 * L2 * 2 * fm1m3mu3 - 4 * L1 + 2 * L1 * b -
+              2 * L1 * L3 * 2 * fm13mu2 + 2 * L1 * L2 * 2 * fm13mu2;
+
+  out(1, 1) = -dphi(1, 1) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
+                             1 * L1 * L2 * 2 * fm13mu2) -
+              dphi(0, 1) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
+                            1 * L1 * L2 * 2 * fm1m3mu3);
+
+  out(1, 2) = dphi(1, 0) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
+                            1 * L1 * L2 * 2 * fm13mu2) +
+              dphi(0, 0) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
+                            1 * L1 * L2 * 2 * fm1m3mu3);
+
+  out(1, 3) = 6 - 12 * L2 - 4 * L1 - 2 * L1 * c + 8 * L3 * L1 - 8 * L1 * L2 +
+              2 * L1 * a - 2 * L1 * L3 * 2 * fm1m3mu3 +
+              2 * L1 * L2 * 2 * fm1m3mu3;
+
+  out(1, 4) = -dphi(0, 1) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
+                             1 * L1 * L2 * 2 * fm1m3mu3) -
+              dphi(2, 1) *
+                (-6 * L2 + 2 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 - 4 * L1 * L2);
+
+  out(1, 5) = dphi(0, 0) * (-1 * L1 * a + 1 * L1 * L3 * 2 * fm1m3mu3 -
+                            1 * L1 * L2 * 2 * fm1m3mu3) +
+              dphi(2, 0) *
+                (-6 * L2 + 2 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 - 4 * L1 * L2);
+
+  out(1, 6) = -6 + 8 * L1 - 2 * L1 * b + 2 * L1 * L3 * 2 * fm13mu2 -
+              2 * L1 * L2 * 2 * fm13mu2 + 12 * L2 + 2 * L1 * c - 8 * L3 * L1 +
+              8 * L1 * L2;
+
+  out(1, 7) = -dphi(2, 1) * (-6 * L2 + 4 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 -
+                             4 * L1 * L2) -
+              dphi(1, 1) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
+                            1 * L1 * L2 * 2 * fm13mu2);
+
+  out(1, 8) = dphi(2, 0) * (-6 * L2 + 4 - 2 * L1 - 1 * L1 * c + 4 * L3 * L1 -
+                            4 * L1 * L2) +
+              dphi(1, 0) * (2 * L1 - 1 * L1 * b + 1 * L1 * L3 * 2 * fm13mu2 -
+                            1 * L1 * L2 * 2 * fm13mu2);
+
+  out(2, 0) = 2 - 4 * L1 + L3 * a - L2 * a + L2 * L3 * 2 * fm1m3mu3 - L1 * a -
+              L1 * L2 * 2 * fm1m3mu3 + L1 * L3 * 2 * f1m3mu3 -
+              L1 * L2 * 2 * f1m3mu3 - 4 * L2 - L3 * b + L2 * b -
+              L2 * L3 * 2 * fm13mu2 + L1 * b + L1 * L2 * 2 * fm13mu2 +
+              4 * L3 * L1 - 4 * L1 * L2;
+
+  out(2, 1) =
+    -dphi(1, 1) * (-1 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
+                   0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
+                   0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2) -
+    dphi(0, 1) *
+      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
+       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
+       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3);
+
+  out(2, 2) =
+    dphi(1, 0) * (-1 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
+                  0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
+                  0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2) +
+    dphi(0, 0) *
+      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
+       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
+       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3);
+
+  out(2, 3) = 2 - 4 * L2 + L3 * c - L2 * c + 4 * L2 * L3 - L1 * c -
+              4 * L1 * L2 + L1 * L3 * 2 * f13mu1 - L1 * L2 * 2 * f13mu1 -
+              4 * L1 - L3 * a + L2 * a + L1 * a - L2 * L3 * 2 * fm1m3mu3 +
+              L1 * L2 * 2 * fm1m3mu3 - L1 * L3 * 2 * f1m3mu3 +
+              L1 * L2 * 2 * f1m3mu3;
+
+  out(2, 4) =
+    -dphi(0, 1) *
+      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
+       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
+       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3 - 1) -
+    dphi(2, 1) *
+      (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 - 0.5 * L1 * c -
+       2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 - 0.5 * L1 * L2 * 2 * f13mu1);
+
+  out(2, 5) =
+    dphi(0, 0) *
+      (2 * L1 + 0.5 * L3 * a - 0.5 * L2 * a + 0.5 * L2 * L3 * 2 * fm1m3mu3 -
+       0.5 * L1 * a - 0.5 * L1 * L2 * 2 * fm1m3mu3 +
+       0.5 * L1 * L3 * 2 * f1m3mu3 - 0.5 * L1 * L2 * 2 * f1m3mu3 - 1) +
+    dphi(2, 0) *
+      (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 - 0.5 * L1 * c -
+       2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 - 0.5 * L1 * L2 * 2 * f13mu1);
+
+  out(2, 6) = -4 + 8 * L1 + 8 * L2 + L3 * b - L2 * b + L2 * L3 * 2 * fm13mu2 -
+              L1 * b - L1 * L2 * 2 * fm13mu2 - 4 * L3 * L1 + 8 * L1 * L2 -
+              L3 * c + L2 * c - 4 * L2 * L3 + L1 * c - L1 * L3 * 2 * f13mu1 +
+              L1 * L2 * 2 * f13mu1;
+
+  out(2, 7) =
+    -dphi(2, 1) * (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 -
+                   0.5 * L1 * c - 2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 -
+                   0.5 * L1 * L2 * 2 * f13mu1 + 1) -
+    dphi(1, 1) * (-2 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
+                  0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
+                  0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2);
+
+  out(2, 8) =
+    dphi(2, 0) * (-2 * L2 + 0.5 * L3 * c - 0.5 * L2 * c + 2 * L2 * L3 -
+                  0.5 * L1 * c - 2 * L1 * L2 + 0.5 * L1 * L3 * 2 * f13mu1 -
+                  0.5 * L1 * L2 * 2 * f13mu1 + 1) +
+    dphi(1, 0) * (-2 + 4 * L1 + 2 * L2 + 0.5 * L3 * b - 0.5 * L2 * b +
+                  0.5 * L2 * L3 * 2 * fm13mu2 - 0.5 * L1 * b -
+                  0.5 * L1 * L2 * 2 * fm13mu2 - 2 * L3 * L1 + 2 * L1 * L2);
+  // the last row of the matrix must be multipled by 2 (this way, the upper
+  // terms gets a bit shorter...)
+  for (int i = 0; i < 9; i++)
+    out(2, i) *= 2.0;
 }
 
 /**
