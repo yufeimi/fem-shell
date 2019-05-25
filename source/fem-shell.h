@@ -57,7 +57,7 @@ class shellsolid
 {
 public:
   shellsolid(Mesh &, const shellparam &);
-  ~shellsolid();
+  ~shellsolid(){};
   // function prototypes:
   void read_forcing();
 
