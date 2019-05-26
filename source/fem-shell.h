@@ -61,6 +61,8 @@ public:
   // function prototypes:
   void read_forcing();
 
+  void make_constraints(std::map<boundary_id_type, unsigned int> &);
+
   void writeOutput(Mesh &mesh, EquationSystems &es);
 
   void run();

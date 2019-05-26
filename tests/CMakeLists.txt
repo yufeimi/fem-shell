@@ -1,8 +1,8 @@
 set(shell_tests test_A_uv_t
-                test_B_uv_q)
-              #  test_C_w_tA16
-              #  test_D_w_q_uni16
-              #  test_E_uvw_t
+                test_B_uv_q
+                test_C_w_tA16
+                test_D_w_q_uni16
+                test_E_uvw_t)
               #  test_F_032_ss_uni
               #  test_G_MPI_64_q)
 

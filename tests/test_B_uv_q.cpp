@@ -14,7 +14,7 @@ int main(int argc, char **argv)
       std::cout << "Read command-line arguments.......FAILED" << std::endl;
       return -1;
     }
-  // Hard coded parameters for test A
+  // Hard coded parameters for test B
   param.nu = 0.25;
   param.em = 30000;
   param.thickness = 1.0;
@@ -36,9 +36,13 @@ int main(int argc, char **argv)
   // throws error if file does not exist and checks content
   // Print information about the mesh to the screen
   mesh.print_info();
-  mesh.get_boundary_info().print_info();
 
+  // Construct BC map for displacement
+  std::map<boundary_id_type, unsigned int> dirichlet_bcs;
+  // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+  dirichlet_bcs.insert(std::pair<boundary_id_type, unsigned int>(0, 3));
   shellsolid shell(mesh, param);
+  shell.make_constraints(dirichlet_bcs);
   shell.run();
   return 0;
 }

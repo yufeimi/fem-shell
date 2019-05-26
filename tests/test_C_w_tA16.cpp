@@ -14,9 +14,9 @@ int main(int argc, char **argv)
       std::cout << "Read command-line arguments.......FAILED" << std::endl;
       return -1;
     }
-  // Hard coded parameters for test A
-  param.nu = 0.25;
-  param.em = 30000;
+  // Hard coded parameters for test C
+  param.nu = 0.3;
+  param.em = 10.92;
   param.thickness = 1.0;
   param.debug = false;
   std::cout << "Outfile: " << param.out_filename << " " << param.isOutfileSet
@@ -40,7 +40,7 @@ int main(int argc, char **argv)
   // Construct BC map for displacement
   std::map<boundary_id_type, unsigned int> dirichlet_bcs;
   // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
-  dirichlet_bcs.insert(std::pair<boundary_id_type, unsigned int>(0, 3));
+  dirichlet_bcs.insert(std::pair<boundary_id_type, unsigned int>(0, 4));
   shellsolid shell(mesh, param);
   shell.make_constraints(dirichlet_bcs);
   shell.run();

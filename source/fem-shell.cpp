@@ -145,10 +145,8 @@ void shellsolid::read_forcing()
     "Forcing terms") = &forces;
 }
 
-void shellsolid::run()
-{
-  read_forcing();
-  // Add three displacement variables, u, v and w,
+void shellsolid::make_constraints(std::map<boundary_id_type, unsigned int> &bcs)
+{ // Add three displacement variables, u, v and w,
   // as well as three drilling variables theta_x, theta_y and theta_z to the
   // system
   unsigned int u_var = system.add_variable("u", FIRST, LAGRANGE);
@@ -158,44 +156,39 @@ void shellsolid::run()
   unsigned int ty_var = system.add_variable("ty", FIRST, LAGRANGE);
   unsigned int tz_var = system.add_variable("tz", FIRST, LAGRANGE);
 
-  initMaterialMatrices();
-
-  system.attach_assemble_function(shellsolid::assemble_elasticity);
-  // Construct a Dirichlet boundary condition object
-  // We impose a "simply supported" boundary condition
-  // on the nodes with bc_id = 0 and 20
-  std::set<boundary_id_type> boundary_ids;
-  boundary_ids.insert(0);
-  // actually only required with coupled version, but with this,
-  // coupling-ready mesh files can also be processed with stand-alone version:
-  // boundary_ids.insert(20);
-
-  // Create a vector storing the variable numbers which the BC applies to
-  std::vector<unsigned int> variables;
-  variables.push_back(u_var);
-  variables.push_back(v_var);
-  variables.push_back(w_var);
-
-  // Create a ZeroFunction to initialize dirichlet_bc
-  ConstFunction<Number> cf(0.0);
-  DirichletBoundary dirichlet_bc(boundary_ids, variables, &cf);
-
-  // We impose a "clamped" boundary condition
-  // on the nodes with bc_id = 1 and 21
-  // boundary_ids.clear();
-  // boundary_ids.insert(1);
-  // actually only required with coupled version, but with this,
-  // coupling-ready mesh files can also be processed with stand-alone version:
-  // boundary_ids.insert(21);
-  // variables.push_back(tx_var);
-  // variables.push_back(ty_var);
-  // variables.push_back(tz_var);
-  // DirichletBoundary dirichlet_bc2(boundary_ids, variables, &cf);
-
   // We must add the Dirichlet boundary condition _before_ we call
   // equation_systems.init()
-  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
-  // system.get_dof_map().add_dirichlet_boundary(dirichlet_bc2);
+  // Create a ZeroFunction to initialize dirichlet_bc
+  ConstFunction<Number> cf(0.0);
+  for (auto &bc : bcs)
+    {
+      auto id = bc.first;
+      auto flag = bc.second;
+      std::vector<unsigned int> components;
+      // 1-x, 2-y, 3-xy, 4-z, 5-xz, 6-yz, 7-xyz
+      if (flag == 1 || flag == 3 || flag == 5 || flag == 7)
+        {
+          components.push_back(u_var);
+        }
+      if (flag == 2 || flag == 3 || flag == 6 || flag == 7)
+        {
+          components.push_back(v_var);
+        }
+      if (flag == 4 || flag == 5 || flag == 6 || flag == 7)
+        {
+          components.push_back(w_var);
+        }
+      std::set<boundary_id_type> tmp_id({id});
+      DirichletBoundary dirichlet_bc(tmp_id, components, &cf);
+      system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
+    }
+}
+
+void shellsolid::run()
+{
+  initMaterialMatrices();
+
+  read_forcing();
 
   // Initialize the data structures for the equation system.
   equation_systems.init();
@@ -203,16 +196,10 @@ void shellsolid::run()
   // Print information about the system to the screen.
   equation_systems.print_info();
 
-  // const Real tol            = equation_systems.parameters.get<Real>("linear
-  // solver tolerance"); const unsigned int max_it =
-  // equation_systems.parameters.get<unsigned int>("linear solver maximum
-  // iterations"); equation_systems.parameters.set<unsigned int>("linear solver
-  // maximum iterations") = max_it;
-  // equation_systems.parameters.set<Real>("linear solver tolerance") = tol;
-
   /**
    * Solve the system
    **/
+  system.attach_assemble_function(shellsolid::assemble_elasticity);
   equation_systems.solve();
   // store the solution in a vector
   std::vector<Number> sols;
