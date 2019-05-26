@@ -168,7 +168,7 @@ void shellsolid::run()
   boundary_ids.insert(0);
   // actually only required with coupled version, but with this,
   // coupling-ready mesh files can also be processed with stand-alone version:
-  boundary_ids.insert(20);
+  // boundary_ids.insert(20);
 
   // Create a vector storing the variable numbers which the BC applies to
   std::vector<unsigned int> variables;
@@ -182,20 +182,20 @@ void shellsolid::run()
 
   // We impose a "clamped" boundary condition
   // on the nodes with bc_id = 1 and 21
-  boundary_ids.clear();
-  boundary_ids.insert(1);
+  // boundary_ids.clear();
+  // boundary_ids.insert(1);
   // actually only required with coupled version, but with this,
   // coupling-ready mesh files can also be processed with stand-alone version:
-  boundary_ids.insert(21);
-  variables.push_back(tx_var);
-  variables.push_back(ty_var);
-  variables.push_back(tz_var);
-  DirichletBoundary dirichlet_bc2(boundary_ids, variables, &cf);
+  // boundary_ids.insert(21);
+  // variables.push_back(tx_var);
+  // variables.push_back(ty_var);
+  // variables.push_back(tz_var);
+  // DirichletBoundary dirichlet_bc2(boundary_ids, variables, &cf);
 
   // We must add the Dirichlet boundary condition _before_ we call
   // equation_systems.init()
   system.get_dof_map().add_dirichlet_boundary(dirichlet_bc);
-  system.get_dof_map().add_dirichlet_boundary(dirichlet_bc2);
+  // system.get_dof_map().add_dirichlet_boundary(dirichlet_bc2);
 
   // Initialize the data structures for the equation system.
   equation_systems.init();
@@ -216,6 +216,7 @@ void shellsolid::run()
   equation_systems.solve();
   // store the solution in a vector
   std::vector<Number> sols;
+
   equation_systems.build_solution_vector(sols);
 
   if (debug)

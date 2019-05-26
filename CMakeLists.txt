@@ -21,7 +21,7 @@ set(LIBMESH_SEARCH_PATHS
     /opt
     ${LIBMESH_DIR})
 
-find_library(mesh_opt
+find_library(libmesh_LIBRARY
     NAMES mesh_opt
     HINTS ${LIBMESH_INCLUDE_DIR}
     PATH_SUFFIXES lib

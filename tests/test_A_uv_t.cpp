@@ -14,7 +14,13 @@ int main(int argc, char **argv)
       std::cout << "Read command-line arguments.......FAILED" << std::endl;
       return -1;
     }
-
+  // Hard coded parameters for test A
+  param.nu = 0.25;
+  param.em = 30000;
+  param.thickness = 1.0;
+  param.debug = false;
+  std::cout << "Outfile: " << param.out_filename << " " << param.isOutfileSet
+            << std::endl;
   // Initialize libMesh and any dependent library
   LibMeshInit init(argc, argv);
 
@@ -30,6 +36,7 @@ int main(int argc, char **argv)
   // throws error if file does not exist and checks content
   // Print information about the mesh to the screen
   mesh.print_info();
+  mesh.get_boundary_info().print_info();
 
   shellsolid shell(mesh, param);
   shell.run();
