@@ -7,7 +7,7 @@ set(LIBMESH_INCLUDE_DIR	 "" CACHE PATH "LOCATION OF LIBMESH")
 
 option(BUILD_SHARED_LIBS "build using shared libraries" ON)
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 set(LIBMESH_SEARCH_PATHS
@@ -18,8 +18,7 @@ set(LIBMESH_SEARCH_PATHS
     /sw # Fink
     /opt/local # DarwinPorts
     /opt/csw # Blastwave
-    /opt
-    ${LIBMESH_DIR})
+    /opt)
 
 find_library(libmesh_LIBRARY
     NAMES mesh_opt
