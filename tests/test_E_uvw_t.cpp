@@ -3,6 +3,9 @@
 // Begin the main program.
 int main(int argc, char **argv)
 {
+  using namespace ShellSolid;
+  using namespace libMesh;
+
   shellparam param;
   // read command-line arguments and initialize global variables
   if (param.read_parameters(argc, argv))
