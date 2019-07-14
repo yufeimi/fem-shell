@@ -84,6 +84,16 @@ namespace ShellSolid
     else
       isOutfileSet = false;
 
+    // CONVENTION: force file has same file name as mesh file
+    //             without extension, but with "_f" added at the end
+    force_filename = in_filename;
+    if (force_filename.find(".xda") != std::string::npos ||
+        force_filename.find(".xdr") != std::string::npos ||
+        force_filename.find(".msh") != std::string::npos)
+      force_filename.resize(force_filename.size() - 4);
+
+    force_filename += "_f";
+
     std::cout << "Run program with parameters:"
               << " debug messages = " << (debug ? "true" : "false")
               << ", nu = " << nu << ", E = " << em << ", t = " << thickness
@@ -99,6 +109,7 @@ namespace ShellSolid
       equation_systems(mesh),
       system(equation_systems.add_system<LinearImplicitSystem>("Elasticity")),
       in_filename(param.in_filename),
+      force_filename(param.force_filename),
       out_filename(param.out_filename),
       debug(param.debug),
       nu(param.nu),
@@ -114,17 +125,8 @@ namespace ShellSolid
 
   void shellsolid::read_forcing()
   { // Load force file containing single nodal forces and moments
-    // CONVENTION: force file has same file name as mesh file
-    //             without extension, but with "_f" added at the end
     std::filebuf fb;
-    if (in_filename.find(".xda") != std::string::npos ||
-        in_filename.find(".xdr") != std::string::npos ||
-        in_filename.find(".msh") != std::string::npos)
-      in_filename.resize(in_filename.size() - 4);
-
-    in_filename += "_f";
-
-    if (fb.open(in_filename.c_str(), std::ios::in))
+    if (fb.open(force_filename.c_str(), std::ios::in))
       {
         std::istream input(&fb);
         int n_Forces;
@@ -197,9 +199,6 @@ namespace ShellSolid
     // Initialize the data structures for the equation system.
     equation_systems.init();
 
-    // Print information about the system to the screen.
-    equation_systems.print_info();
-
     /**
      * Solve the system
      **/
@@ -250,8 +249,6 @@ namespace ShellSolid
 
     if (isOutfileSet)
       writeOutput(mesh, equation_systems);
-
-    std::cout << "All done :)\n";
   }
 
   /**
@@ -1418,13 +1415,9 @@ namespace ShellSolid
    */
   void shellsolid::writeOutput(Mesh &mesh, EquationSystems &es)
   {
-    // if not set in the command-line, we will not put anything out to files
-    if (!isOutfileSet)
-      return;
-
     // write the solution to file
     std::ostringstream file_name;
-    file_name << out_filename << ".e";
+    file_name << "solid.e";
 
     ExodusII_IO(mesh).write_equation_systems(file_name.str(), es);
   }

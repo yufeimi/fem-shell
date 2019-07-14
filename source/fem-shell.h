@@ -46,8 +46,9 @@ namespace ShellSolid
     shellparam(){};
     ~shellparam(){};
     bool read_parameters(int, char **);
-    std::string in_filename;  // mesh file for import
-    std::string out_filename; // output file name
+    std::string in_filename;    // mesh file for import
+    std::string force_filename; // force file
+    std::string out_filename;   // output file name
     bool debug;
     Real nu;        // Poisson's ratio
     Real em;        // Young's modulus
@@ -129,6 +130,7 @@ namespace ShellSolid
     LinearImplicitSystem &system;
 
     std::string in_filename;               // mesh file for import
+    std::string force_filename;            // forcefile
     std::string out_filename;              // output file name
     bool debug;                            // show debug messages?
     Real nu;                               // Poisson's ratio
