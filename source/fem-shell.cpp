@@ -248,7 +248,7 @@ namespace ShellSolid
       }
 
     if (isOutfileSet)
-      writeOutput(mesh, equation_systems);
+      writeOutput();
   }
 
   /**
@@ -1413,12 +1413,12 @@ namespace ShellSolid
    * @param es reference, in-param, from this system collection the solution is
    * written to the file
    */
-  void shellsolid::writeOutput(Mesh &mesh, EquationSystems &es)
+  void shellsolid::writeOutput()
   {
     // write the solution to file
     std::ostringstream file_name;
     file_name << "solid.e";
 
-    ExodusII_IO(mesh).write_equation_systems(file_name.str(), es);
+    ExodusII_IO(mesh).write_equation_systems(file_name.str(), equation_systems);
   }
 } // namespace ShellSolid

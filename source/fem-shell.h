@@ -66,7 +66,7 @@ namespace ShellSolid
 
     void make_constraints(std::map<boundary_id_type, unsigned int> &);
 
-    void writeOutput(Mesh &mesh, EquationSystems &es);
+    void writeOutput();
 
     void run();
 
