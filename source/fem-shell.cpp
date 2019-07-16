@@ -104,7 +104,7 @@ namespace ShellSolid
     return (!failed);
   }
 
-  shellsolid::shellsolid(Mesh &mesh, const shellparam &param)
+  shellsolid::shellsolid(SerialMesh &mesh, const shellparam &param)
     : mesh(mesh),
       equation_systems(mesh),
       system(equation_systems.add_system<LinearImplicitSystem>("Elasticity")),

@@ -32,7 +32,7 @@ int main(int argc, char **argv)
 
   // Initialize the mesh
   // Create a 2D mesh distributed across the default MPI communicator.
-  Mesh mesh(init.comm(), 2);
+  SerialMesh mesh(init.comm(), 2);
   mesh.allow_renumbering(
     false); // prevent libMesh from renumber nodes on its own
   mesh.read(param.in_filename);

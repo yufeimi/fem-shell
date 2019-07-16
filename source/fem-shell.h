@@ -31,8 +31,8 @@
 #include "libmesh/gmsh_io.h"
 #include "libmesh/libmesh.h"
 #include "libmesh/linear_implicit_system.h"
-#include "libmesh/mesh.h"
 #include "libmesh/numeric_vector.h"
+#include "libmesh/serial_mesh.h"
 #include "libmesh/sparse_matrix.h"
 #include "libmesh/zero_function.h"
 
@@ -59,7 +59,7 @@ namespace ShellSolid
   class shellsolid
   {
   public:
-    shellsolid(Mesh &, const shellparam &);
+    shellsolid(SerialMesh &, const shellparam &);
     ~shellsolid(){};
     // function prototypes:
     void read_forcing();
@@ -125,7 +125,7 @@ namespace ShellSolid
     static void assemble_elasticity(EquationSystems &es,
                                     const std::string &system_name);
 
-    Mesh mesh;
+    SerialMesh mesh;
     EquationSystems equation_systems;
     LinearImplicitSystem &system;
 
