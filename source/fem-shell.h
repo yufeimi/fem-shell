@@ -92,6 +92,19 @@ namespace ShellSolid
                           Real *area,
                           DenseMatrix<Real> &Ke_p);
 
+    static void B_plane_tri(EquationSystems &es,
+                         Real *area,    
+                         DenseMatrix<Real> &dphi,
+                         DenseMatrix<Real> &out);
+
+    static void B_plane_quad(EquationSystems &es,
+                         Real *area,    
+                         DenseMatrix<Real> &dphi, 
+                         DenseMatrix<Real> &transUV,
+                         Real qp_x,
+                         Real qp_y,
+                         DenseMatrix<Real> &out);
+
     static void evalBTri(EquationSystems &es,
                          DenseVector<Real> &C,
                          Real L1,
@@ -125,9 +138,12 @@ namespace ShellSolid
     static void assemble_elasticity(EquationSystems &es,
                                     const std::string &system_name);
 
+    static void stress_calculation(EquationSystems &es);
+
     SerialMesh mesh;
     EquationSystems equation_systems;
     LinearImplicitSystem &system;
+    ExplicitSystem &stress_system;
 
     std::string in_filename;               // mesh file for import
     std::string force_filename;            // forcefile
