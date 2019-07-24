@@ -68,6 +68,8 @@ namespace ShellSolid
 
     void writeOutput();
 
+    const std::vector<Number> &get_solution() { return this->sols; };
+
     void run();
 
   private:
@@ -153,6 +155,7 @@ namespace ShellSolid
     Real em;                               // Young's modulus
     Real thickness;                        // Mesh thickness
     std::vector<DenseVector<Real>> forces; // nodal force vector
+    std::vector<Number> sols;              // solution vector
     bool isOutfileSet;                     // should outputs be written or not
 
     DenseMatrix<Real> Dp, Dm; // material matrix for plate (Dp) and plane (Dm)

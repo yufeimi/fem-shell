@@ -217,8 +217,6 @@ namespace ShellSolid
      **/
     system.attach_assemble_function(shellsolid::assemble_elasticity);
     equation_systems.get_system("Elasticity").solve();
-    // store the solution in a vector
-    std::vector<Number> sols;
 
     equation_systems.build_solution_vector(sols);
 
@@ -232,35 +230,34 @@ namespace ShellSolid
         std::cout << std::endl << "RHS:" << std::endl;
         system.rhs->print(std::cout);
         std::cout << std::endl;
-      }
-
-    // be sure that only the master process (id = 0) works on the solution,
-    // since the rest of the processes only see their own partial solution
-    if (global_processor_id() == 0)
-      {
-        std::cout << "Solution: u_vec = [";
-        MeshBase::const_node_iterator no = mesh.nodes_begin();
-        const MeshBase::const_node_iterator end_no = mesh.nodes_end();
-        for (; no != end_no; ++no)
+        // be sure that only the master process (id = 0) works on the solution,
+        // since the rest of the processes only see their own partial solution
+        if (global_processor_id() == 0)
           {
-            Node *nd = *no;
-            int id = nd->id();
-            Real displ_x = sols[15 * id];
-            Real displ_y = sols[15 * id + 1];
-            Real displ_z = sols[15 * id + 2];
-            std::cout << "u= " << displ_x << ", v= " << displ_y
-                      << ", w= " << displ_z;
-            Real twist_x = sols[15 * id + 3];
-            Real twist_y = sols[15 * id + 4];
-            Real twist_z = sols[15 * id + 5];
-            std::cout << ", tx= " << twist_x << ", ty= " << twist_y
-                      << ", tz= " << twist_z << "]" << std::endl;
-            // apply displacements to mesh nodes
-            (*nd)(0) += displ_x;
-            (*nd)(1) += displ_y;
-            (*nd)(2) += displ_z;
+            std::cout << "Solution: u_vec = [";
+            MeshBase::const_node_iterator no = mesh.nodes_begin();
+            const MeshBase::const_node_iterator end_no = mesh.nodes_end();
+            for (; no != end_no; ++no)
+              {
+                Node *nd = *no;
+                int id = nd->id();
+                Real displ_x = sols[15 * id];
+                Real displ_y = sols[15 * id + 1];
+                Real displ_z = sols[15 * id + 2];
+                std::cout << "u= " << displ_x << ", v= " << displ_y
+                          << ", w= " << displ_z;
+                Real twist_x = sols[15 * id + 3];
+                Real twist_y = sols[15 * id + 4];
+                Real twist_z = sols[15 * id + 5];
+                std::cout << ", tx= " << twist_x << ", ty= " << twist_y
+                          << ", tz= " << twist_z << "]" << std::endl;
+                // apply displacements to mesh nodes
+                (*nd)(0) += displ_x;
+                (*nd)(1) += displ_y;
+                (*nd)(2) += displ_z;
+              }
+            std::cout << "]" << std::endl << std::endl;
           }
-        std::cout << "]" << std::endl << std::endl;
       }
 
     if (isOutfileSet)
@@ -1729,16 +1726,6 @@ namespace ShellSolid
               }
             elem_stress_tensor.scale(
               1.0 / 4.0); // Averaging stress at quadrature points
-          }
-        std::cout << "Stress Tensor:" << std::endl;
-
-        for (int i = 0; i < 3; i++)
-          {
-            for (int j = 0; j < 3; j++)
-              {
-                std::cout << elem_stress_tensor(i, j) << " ";
-              }
-            std::cout << std::endl;
           }
 
         // saving element stress in the system
