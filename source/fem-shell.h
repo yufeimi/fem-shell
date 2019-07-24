@@ -93,17 +93,17 @@ namespace ShellSolid
                           DenseMatrix<Real> &Ke_p);
 
     static void B_plane_tri(EquationSystems &es,
-                         Real *area,    
-                         DenseMatrix<Real> &dphi,
-                         DenseMatrix<Real> &out);
+                            Real *area,
+                            DenseMatrix<Real> &dphi,
+                            DenseMatrix<Real> &out);
 
     static void B_plane_quad(EquationSystems &es,
-                         Real *area,    
-                         DenseMatrix<Real> &dphi, 
-                         DenseMatrix<Real> &transUV,
-                         Real qp_x,
-                         Real qp_y,
-                         DenseMatrix<Real> &out);
+                             Real *area,
+                             DenseMatrix<Real> &dphi,
+                             DenseMatrix<Real> &transUV,
+                             Real qp_x,
+                             Real qp_y,
+                             DenseMatrix<Real> &out);
 
     static void evalBTri(EquationSystems &es,
                          DenseVector<Real> &C,
