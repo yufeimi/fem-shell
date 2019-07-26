@@ -104,9 +104,9 @@ namespace ShellSolid
     return (!failed);
   }
 
-  shellsolid::shellsolid(SerialMesh &mesh, const shellparam &param)
+  shellsolid::shellsolid(const SerialMesh &mesh, const shellparam &param)
     : mesh(mesh),
-      equation_systems(mesh),
+      equation_systems(this->mesh),
       system(equation_systems.add_system<LinearImplicitSystem>("Elasticity")),
       stress_system(
         equation_systems.add_system<ExplicitSystem>("StressSystem")),
@@ -220,8 +220,7 @@ namespace ShellSolid
 
     equation_systems.build_solution_vector(sols);
 
-    // stress_calculation(equation_systems, sols);
-    stress_calculation(equation_systems);
+    stress_calculation();
 
     if (debug)
       {
@@ -775,8 +774,7 @@ namespace ShellSolid
 
   /*Construct the strain displacement matrix B for tri-3 plane element*/
   /*Required for stress calculation */
-  void shellsolid::B_plane_tri(EquationSystems &es,
-                               Real *area,
+  void shellsolid::B_plane_tri(Real *area,
                                DenseMatrix<Real> &dphi,
                                DenseMatrix<Real> &out)
   {
@@ -798,8 +796,7 @@ namespace ShellSolid
 
   /*Construct the strain displacement matrix B for quad-4 plane element*/
   /*Required for stress calculation */
-  void shellsolid::B_plane_quad(EquationSystems &es,
-                                Real *area,
+  void shellsolid::B_plane_quad(Real *area,
                                 DenseMatrix<Real> &dphi,
                                 DenseMatrix<Real> &transUV,
                                 Real qp_x,
@@ -1509,14 +1506,10 @@ namespace ShellSolid
   }
 
   /* Stress Calculation*/
-  void shellsolid::stress_calculation(EquationSystems &es)
+  void shellsolid::stress_calculation()
   {
-    const MeshBase &mesh = es.get_mesh();
-
     const unsigned int dim = mesh.mesh_dimension();
 
-    LinearImplicitSystem &system =
-      es.get_system<LinearImplicitSystem>("Elasticity");
     unsigned int displacement_vars[6];
     displacement_vars[0] = system.variable_number("u");
     displacement_vars[1] = system.variable_number("v");
@@ -1530,8 +1523,6 @@ namespace ShellSolid
       system.n_vars()); // Vector stores global dof dof_indices_var[var
                         // no.][node no.]
 
-    ExplicitSystem &stress_system =
-      es.get_system<ExplicitSystem>("StressSystem");
     unsigned int sigma_vars[3][3];
     sigma_vars[0][0] = stress_system.variable_number("sigma_xx");
     sigma_vars[0][1] = stress_system.variable_number("sigma_xy");
@@ -1545,15 +1536,6 @@ namespace ShellSolid
 
     const DofMap &stress_dof_map = stress_system.get_dof_map();
     std::vector<dof_id_type> stress_dof_indices_var;
-
-    // Unpack the material matrices
-    DenseMatrix<Real> &Dm =
-      *(es.parameters.get<DenseMatrix<Real> *>("Plane material matrix"));
-    DenseMatrix<Real> &Dp =
-      *(es.parameters.get<DenseMatrix<Real> *>("Plate material matrix"));
-    // Unpack the thickness
-    Real thickness = es.parameters.get<Real>("Thickness");
-
     DenseMatrix<Real> B_m; // Strain displacement matrix
     DenseMatrix<Real> B_b; // Strain displacement matrix bending
     DenseMatrix<Real>
@@ -1579,7 +1561,6 @@ namespace ShellSolid
     MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
     const MeshBase::const_element_iterator end_el =
       mesh.active_local_elements_end();
-
     for (; el != end_el; ++el)
       {
         const Elem *elem = *el;
@@ -1590,7 +1571,6 @@ namespace ShellSolid
             dof_map.dof_indices(
               elem, dof_indices_var[var], displacement_vars[var]);
           }
-
         initElement(&elem, transUV, trafo, dphi, &area);
         // creating 6x6 transformation matrix
         trafo_2.resize(6, 6);
@@ -1615,7 +1595,7 @@ namespace ShellSolid
             elem_dis_local_uv.resize(2 * nodes);
             elem_stress_tensor.resize(3, 3);
 
-            B_plane_tri(es, &area, dphi, B_m);
+            B_plane_tri(&area, dphi, B_m);
 
             // transforming solution from global to local co-ordinates
             for (int i = 0; i < nodes; i++)
@@ -1698,7 +1678,7 @@ namespace ShellSolid
                     B_m.resize(3, 8);
                     Real s = pow(-1.0, jj) * root; // +/- root
 
-                    B_plane_quad(es, &area, dphi, transUV, r, s, B_m);
+                    B_plane_quad(&area, dphi, transUV, r, s, B_m);
 
                     temp = Dm;
                     temp.right_multiply(B_m);

@@ -59,7 +59,7 @@ namespace ShellSolid
   class shellsolid
   {
   public:
-    shellsolid(SerialMesh &, const shellparam &);
+    shellsolid(const SerialMesh &, const shellparam &);
     ~shellsolid(){};
     // function prototypes:
     void read_forcing();
@@ -94,18 +94,15 @@ namespace ShellSolid
                           Real *area,
                           DenseMatrix<Real> &Ke_p);
 
-    static void B_plane_tri(EquationSystems &es,
-                            Real *area,
-                            DenseMatrix<Real> &dphi,
-                            DenseMatrix<Real> &out);
+    void
+    B_plane_tri(Real *area, DenseMatrix<Real> &dphi, DenseMatrix<Real> &out);
 
-    static void B_plane_quad(EquationSystems &es,
-                             Real *area,
-                             DenseMatrix<Real> &dphi,
-                             DenseMatrix<Real> &transUV,
-                             Real qp_x,
-                             Real qp_y,
-                             DenseMatrix<Real> &out);
+    void B_plane_quad(Real *area,
+                      DenseMatrix<Real> &dphi,
+                      DenseMatrix<Real> &transUV,
+                      Real qp_x,
+                      Real qp_y,
+                      DenseMatrix<Real> &out);
 
     static void evalBTri(EquationSystems &es,
                          DenseVector<Real> &C,
@@ -140,7 +137,7 @@ namespace ShellSolid
     static void assemble_elasticity(EquationSystems &es,
                                     const std::string &system_name);
 
-    static void stress_calculation(EquationSystems &es);
+    void stress_calculation();
 
     SerialMesh mesh;
     EquationSystems equation_systems;
