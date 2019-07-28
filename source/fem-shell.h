@@ -68,7 +68,9 @@ namespace ShellSolid
 
     void writeOutput();
 
-    const std::vector<Number> &get_solution() { return this->sols; };
+    void set_solution(const std::vector<Number> &);
+
+    inline const std::vector<Number> &get_solution() { return this->sols; };
 
     void run();
 

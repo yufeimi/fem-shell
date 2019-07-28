@@ -203,6 +203,22 @@ namespace ShellSolid
       }
   }
 
+  void shellsolid::set_solution(const std::vector<Number> &solutions)
+  {
+    const auto &dof_map = system.get_dof_map();
+    std::vector<dof_id_type> dof_id_list(system.n_vars());
+    for (auto node = mesh.active_nodes_begin(); node != mesh.active_nodes_end();
+         ++node)
+      {
+        auto node_id = (*node)->id();
+        dof_map.dof_indices(*node, dof_id_list);
+        for (auto i : {0, 1, 2})
+          {
+            system.solution->set(dof_id_list[i], solutions[6 * node_id + i]);
+          }
+      }
+  }
+
   void shellsolid::run()
   {
     initMaterialMatrices();
