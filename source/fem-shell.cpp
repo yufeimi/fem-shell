@@ -230,6 +230,7 @@ namespace ShellSolid
             system.solution->set(dof_id_list[i], solutions[6 * node_id + i]);
           }
       }
+    equation_systems.build_solution_vector(sols);
   }
 
   void shellsolid::run()
