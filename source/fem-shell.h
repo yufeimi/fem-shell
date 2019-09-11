@@ -146,8 +146,7 @@ namespace ShellSolid
     SerialMesh mesh;
     EquationSystems equation_systems;
     LinearImplicitSystem &system;
-    ExplicitSystem &stress_system;   // Membrane Stresses
-    ExplicitSystem &stress_system_b; // Bending Stresses
+    ExplicitSystem &stress_system; // Membrane Stresses
 
     std::string in_filename;               // mesh file for import
     std::string force_filename;            // forcefile

@@ -110,8 +110,6 @@ namespace ShellSolid
       system(equation_systems.add_system<LinearImplicitSystem>("Elasticity")),
       stress_system(
         equation_systems.add_system<ExplicitSystem>("StressSystem")),
-      stress_system_b(
-        equation_systems.add_system<ExplicitSystem>("StressSystem_b")),
       in_filename(param.in_filename),
       force_filename(param.force_filename),
       out_filename(param.out_filename),
@@ -121,6 +119,7 @@ namespace ShellSolid
       thickness(param.thickness),
       isOutfileSet(param.isOutfileSet)
   {
+    equation_systems.add_system<ExplicitSystem>("StressSystem_b");
     equation_systems.parameters.insert<Real>("Thickness");
     equation_systems.parameters.set<Real>("Thickness") = thickness;
     equation_systems.parameters.insert<bool>("Debug");
@@ -178,6 +177,8 @@ namespace ShellSolid
     stress_system.add_variable("sigma_zz", CONSTANT, MONOMIAL);
 
     // Add bending stress tensor to the system
+    auto &stress_system_b =
+      equation_systems.get_system<ExplicitSystem>("StressSystem_b");
     stress_system_b.add_variable("sigma_b_xx", CONSTANT, MONOMIAL);
     stress_system_b.add_variable("sigma_b_xy", CONSTANT, MONOMIAL);
     stress_system_b.add_variable("sigma_b_xz", CONSTANT, MONOMIAL);
@@ -248,9 +249,9 @@ namespace ShellSolid
     system.attach_assemble_function(shellsolid::assemble_elasticity);
     equation_systems.get_system("Elasticity").solve();
 
-    equation_systems.build_solution_vector(sols);
-
     stress_calculation();
+
+    equation_systems.build_solution_vector(sols);
 
     if (debug)
       {
@@ -1565,6 +1566,8 @@ namespace ShellSolid
     sigma_vars[2][2] = stress_system.variable_number("sigma_zz");
 
     unsigned int sigma_vars_b[3][3];
+    auto &stress_system_b =
+      equation_systems.get_system<ExplicitSystem>("StressSystem_b");
     sigma_vars_b[0][0] = stress_system_b.variable_number("sigma_b_xx");
     sigma_vars_b[0][1] = stress_system_b.variable_number("sigma_b_xy");
     sigma_vars_b[0][2] = stress_system_b.variable_number("sigma_b_xz");
