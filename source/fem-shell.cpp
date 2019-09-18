@@ -221,6 +221,8 @@ namespace ShellSolid
   {
     const auto &dof_map = system.get_dof_map();
     std::vector<dof_id_type> dof_id_list(system.n_vars());
+    auto first_index = system.solution->first_local_index();
+    auto last_index = system.solution->last_local_index();
     for (auto node = mesh.active_nodes_begin(); node != mesh.active_nodes_end();
          ++node)
       {
@@ -228,11 +230,18 @@ namespace ShellSolid
         dof_map.dof_indices(*node, dof_id_list);
         for (auto i : {0, 1, 2})
           {
-            system.solution->set(dof_id_list[i], solutions[6 * node_id + i]);
+            if (dof_id_list[i] > first_index && dof_id_list[i] < last_index)
+              system.solution->set(dof_id_list[i], solutions[6 * node_id + i]);
           }
       }
     equation_systems.build_solution_vector(sols);
   }
+
+  void shellsolid::initialize_system()
+  {
+    equation_systems.init();
+    initMaterialMatrices();
+  };
 
   void shellsolid::run()
   {
@@ -251,7 +260,7 @@ namespace ShellSolid
 
     stress_calculation();
 
-    equation_systems.build_solution_vector(sols);
+    // equation_systems.build_solution_vector(sols);
 
     if (debug)
       {
@@ -1948,6 +1957,7 @@ namespace ShellSolid
     stress_system.update();
     stress_system_b.solution->close();
     stress_system_b.update();
+    equation_systems.build_solution_vector(sols);
   }
 
   void shellsolid::calculate_drilling()
@@ -2120,6 +2130,7 @@ namespace ShellSolid
           }
       }
     system.update();
+    equation_systems.build_solution_vector(sols);
   }
 
   /**

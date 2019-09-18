@@ -68,9 +68,15 @@ namespace ShellSolid
 
     void writeOutput();
 
+    void initialize_system();
+
     void set_solution(const std::vector<Number> &);
 
     inline const std::vector<Number> &get_solution() { return this->sols; };
+
+    void stress_calculation();
+
+    void calculate_drilling();
 
     void run();
 
@@ -138,10 +144,6 @@ namespace ShellSolid
 
     static void assemble_elasticity(EquationSystems &es,
                                     const std::string &system_name);
-
-    void stress_calculation();
-
-    void calculate_drilling();
 
     SerialMesh mesh;
     EquationSystems equation_systems;
